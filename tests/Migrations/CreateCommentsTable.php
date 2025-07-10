@@ -2,7 +2,7 @@
 
 namespace LaravelPropertyBag\tests\Migrations;
 
-use Schema;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Database\Migrations\Migration;
 
@@ -29,6 +29,6 @@ class CreateCommentsTable extends Migration
      */
     public function down()
     {
-        Schema::drop('comments');
+        Schema::dropIfExists('comments');
     }
 }

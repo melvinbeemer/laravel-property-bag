@@ -2,13 +2,15 @@
 
 namespace LaravelPropertyBag\tests\Unit;
 
+use PHPUnit\Framework\Attributes\Test;
+
 use LaravelPropertyBag\tests\TestCase;
 
 class HasSettingsTest extends TestCase
 {
     /**
-     * @test
      */
+    #[Test]
     public function if_key_is_given_to_settings_method_value_is_returned()
     {
         $value = $this->user->settings('test_settings1');
@@ -17,8 +19,8 @@ class HasSettingsTest extends TestCase
     }
 
     /**
-     * @test
      */
+    #[Test]
     public function if_array_is_given_to_settings_method_value_is_set()
     {
         $settings = [
@@ -32,7 +34,7 @@ class HasSettingsTest extends TestCase
             $this->user->settings()->allSaved()->all()
         );
 
-        $this->seeInDatabase('property_bag', [
+        $this->assertDatabaseHas('property_bag', [
             'resource_id'   => $this->user->id,
             'resource_type' => 'LaravelPropertyBag\tests\Classes\User',
             'key'           => 'test_settings1',
@@ -41,8 +43,8 @@ class HasSettingsTest extends TestCase
     }
 
     /**
-     * @test
      */
+    #[Test]
     public function settings_can_be_set_with_from_hassettings()
     {
         $settings = [
@@ -57,14 +59,14 @@ class HasSettingsTest extends TestCase
             $this->user->settings()->allSaved()->all()
         );
 
-        $this->seeInDatabase('property_bag', [
+        $this->assertDatabaseHas('property_bag', [
             'resource_id'   => $this->user->id,
             'resource_type' => 'LaravelPropertyBag\tests\Classes\User',
             'key'           => 'test_settings1',
             'value'         => json_encode('["bananas"]'),
         ]);
 
-        $this->seeInDatabase('property_bag', [
+        $this->assertDatabaseHas('property_bag', [
             'resource_id'   => $this->user->id,
             'resource_type' => 'LaravelPropertyBag\tests\Classes\User',
             'key'           => 'test_settings3',
@@ -73,8 +75,8 @@ class HasSettingsTest extends TestCase
     }
 
     /**
-     * @test
      */
+    #[Test]
     public function all_settings_can_be_retrieved_from_hassettings()
     {
         $settings = [
@@ -93,8 +95,8 @@ class HasSettingsTest extends TestCase
     }
 
     /**
-     * @test
      */
+    #[Test]
     public function default_setting_can_be_retrieved_from_hassettings()
     {
         $default = $this->user->defaultSetting('test_settings1');
@@ -103,8 +105,8 @@ class HasSettingsTest extends TestCase
     }
 
     /**
-     * @test
      */
+    #[Test]
     public function all_defaults_can_be_retrieved_from_hassettings()
     {
         $defaults = $this->user->defaultSetting();
@@ -117,8 +119,8 @@ class HasSettingsTest extends TestCase
     }
 
     /**
-     * @test
      */
+    #[Test]
     public function allowed_settings_for_single_key_can_be_retrieved_from_hassettings()
     {
         $allowed = $this->user->allowedSetting('test_settings1');
@@ -127,8 +129,8 @@ class HasSettingsTest extends TestCase
     }
 
     /**
-     * @test
      */
+    #[Test]
     public function all_allowed_values_can_be_retrieved_from_hassettings()
     {
         $allowed = $this->user->allowedSetting();
@@ -143,8 +145,8 @@ class HasSettingsTest extends TestCase
     }
 
     /**
-     * @test
      */
+    #[Test]
     public function all_resources_with_setting_can_be_retrieved_from_hassettings()
     {
         $this->assertCount(1, $this->user::withSetting('test_settings1'));
@@ -153,8 +155,8 @@ class HasSettingsTest extends TestCase
     }
 
     /**
-     * @test
      */
+    #[Test]
     public function all_resources_with_setting_and_value_can_be_retrieved_from_hassettings()
     {
         $this->assertCount(1, $this->user::withSetting('test_settings1', 'monkey'));

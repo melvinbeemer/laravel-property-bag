@@ -2,16 +2,17 @@
 
 namespace LaravelPropertyBag\tests\Unit;
 
+use PHPUnit\Framework\Attributes\Test;
+
 use LaravelPropertyBag\tests\TestCase;
 
 class TypeTest extends TestCase
 {
     /**
-     * @test
      */
+    #[Test]
     public function it_distinguishes_between_bool_and_int_types()
     {
-        $this->actingAs($this->user);
 
         $settings = $this->user->settings();
 
@@ -33,11 +34,10 @@ class TypeTest extends TestCase
     }
 
     /**
-     * @test
      */
+    #[Test]
     public function it_distinguishes_between_bool_and_string_types()
     {
-        $this->actingAs($this->user);
 
         $settings = $this->user->settings();
 
@@ -59,11 +59,10 @@ class TypeTest extends TestCase
     }
 
     /**
-     * @test
      */
+    #[Test]
     public function it_distinguishes_between_int_and_string_types()
     {
-        $this->actingAs($this->user);
 
         $settings = $this->user->settings();
 

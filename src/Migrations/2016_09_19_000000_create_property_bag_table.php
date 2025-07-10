@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\Schema;
 
 class CreatePropertyBagTable extends Migration
 {
@@ -31,6 +32,6 @@ class CreatePropertyBagTable extends Migration
      */
     public function down()
     {
-        Schema::drop('property_bag');
+        Schema::dropIfExists('property_bag');
     }
 }

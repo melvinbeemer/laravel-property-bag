@@ -2,13 +2,15 @@
 
 namespace LaravelPropertyBag\tests\Functional;
 
+use PHPUnit\Framework\Attributes\Test;
+
 use LaravelPropertyBag\tests\TestCase;
 
 class PropertyBagTest extends TestCase
 {
     /**
-     * @test
      */
+    #[Test]
     public function a_resource_can_access_and_use_the_property_bag()
     {
         $group = $this->makeGroup();
@@ -26,7 +28,7 @@ class PropertyBagTest extends TestCase
 
         $this->assertEquals('grapes', $settings->get('test_settings1'));
 
-        $this->seeInDatabase('property_bag', [
+        $this->assertDatabaseHas('property_bag', [
             'resource_id'   => $group->id,
             'resource_type' => 'LaravelPropertyBag\tests\Classes\Group',
             'key'           => 'test_settings1',
@@ -37,7 +39,7 @@ class PropertyBagTest extends TestCase
 
         $this->assertEquals(false, $settings->get('test_settings2'));
 
-        $this->seeInDatabase('property_bag', [
+        $this->assertDatabaseHas('property_bag', [
             'resource_id'   => $group->id,
             'resource_type' => 'LaravelPropertyBag\tests\Classes\Group',
             'key'           => 'test_settings2',
@@ -54,7 +56,7 @@ class PropertyBagTest extends TestCase
 
         $this->assertEquals('bananas', $settings->get('test_settings1'));
 
-        $this->seeInDatabase('property_bag', [
+        $this->assertDatabaseHas('property_bag', [
             'resource_id'   => $group->id,
             'resource_type' => 'LaravelPropertyBag\tests\Classes\Group',
             'key'           => 'test_settings1',
@@ -65,7 +67,7 @@ class PropertyBagTest extends TestCase
 
         $this->assertEquals(true, $settings->get('test_settings2'));
 
-        $this->dontSeeInDatabase('property_bag', [
+        $this->assertDatabaseMissing('property_bag', [
             'resource_id'   => $group->id,
             'resource_type' => 'LaravelPropertyBag\tests\Classes\Group',
             'key'           => 'test_settings2',
@@ -75,7 +77,7 @@ class PropertyBagTest extends TestCase
 
         $this->assertEquals('false', $settings->get('test_settings3'));
 
-        $this->seeInDatabase('property_bag', [
+        $this->assertDatabaseHas('property_bag', [
             'resource_id'   => $group->id,
             'resource_type' => 'LaravelPropertyBag\tests\Classes\Group',
             'key'           => 'test_settings3',
@@ -84,8 +86,8 @@ class PropertyBagTest extends TestCase
     }
 
     /**
-     * @test
      */
+    #[Test]
     public function multiple_instances_of_same_resource_can_use_settings()
     {
         $user1 = $this->user;
@@ -103,7 +105,7 @@ class PropertyBagTest extends TestCase
             $user1->settings()->allSaved()->all()
         );
 
-        $this->seeInDatabase('property_bag', [
+        $this->assertDatabaseHas('property_bag', [
             'resource_id'   => $user1->id,
             'resource_type' => 'LaravelPropertyBag\tests\Classes\User',
             'key'           => 'test_settings1',
@@ -119,7 +121,7 @@ class PropertyBagTest extends TestCase
             $user2->settings()->allSaved()->all()
         );
 
-        $this->seeInDatabase('property_bag', [
+        $this->assertDatabaseHas('property_bag', [
             'resource_id'   => $user2->id,
             'resource_type' => 'LaravelPropertyBag\tests\Classes\User',
             'key'           => 'test_settings1',
@@ -136,7 +138,7 @@ class PropertyBagTest extends TestCase
 
         );
 
-        $this->seeInDatabase('property_bag', [
+        $this->assertDatabaseHas('property_bag', [
             'resource_id'   => $user3->id,
             'resource_type' => 'LaravelPropertyBag\tests\Classes\User',
             'key'           => 'test_settings1',
@@ -149,7 +151,7 @@ class PropertyBagTest extends TestCase
             $user1->settings()->allSaved()->all()
         );
 
-        $this->seeInDatabase('property_bag', [
+        $this->assertDatabaseHas('property_bag', [
             'resource_id'   => $user1->id,
             'resource_type' => 'LaravelPropertyBag\tests\Classes\User',
             'key'           => 'test_settings1',
@@ -158,8 +160,8 @@ class PropertyBagTest extends TestCase
     }
 
     /**
-     * @test
      */
+    #[Test]
     public function multiple_resources_can_use_settings()
     {
         $group = $this->makeGroup();
@@ -185,20 +187,20 @@ class PropertyBagTest extends TestCase
             $group->settings()->all()->all()
         );
 
-        $this->seeInDatabase('property_bag', [
+        $this->assertDatabaseHas('property_bag', [
             'resource_id'   => $group->id,
             'resource_type' => 'LaravelPropertyBag\tests\Classes\Group',
             'key'           => 'test_settings1',
             'value'         => json_encode('[8]'),
         ]);
 
-        $this->dontSeeInDatabase('property_bag', [
+        $this->assertDatabaseMissing('property_bag', [
             'resource_id'   => $group->id,
             'resource_type' => 'LaravelPropertyBag\tests\Classes\Group',
             'key'           => 'test_settings2',
         ]);
 
-        $this->seeInDatabase('property_bag', [
+        $this->assertDatabaseHas('property_bag', [
             'resource_id'   => $group->id,
             'resource_type' => 'LaravelPropertyBag\tests\Classes\Group',
             'key'           => 'test_settings3',
@@ -210,20 +212,20 @@ class PropertyBagTest extends TestCase
             $this->user->settings()->all()->all()
         );
 
-        $this->dontSeeInDatabase('property_bag', [
+        $this->assertDatabaseMissing('property_bag', [
             'resource_id'   => $this->user->id,
             'resource_type' => 'LaravelPropertyBag\tests\Classes\User',
             'key'           => 'test_settings1',
         ]);
 
-        $this->seeInDatabase('property_bag', [
+        $this->assertDatabaseHas('property_bag', [
             'resource_id'   => $this->user->id,
             'resource_type' => 'LaravelPropertyBag\tests\Classes\User',
             'key'           => 'test_settings2',
             'value'         => json_encode('[false]'),
         ]);
 
-        $this->seeInDatabase('property_bag', [
+        $this->assertDatabaseHas('property_bag', [
             'resource_id'   => $this->user->id,
             'resource_type' => 'LaravelPropertyBag\tests\Classes\User',
             'key'           => 'test_settings3',
@@ -237,14 +239,14 @@ class PropertyBagTest extends TestCase
             'bool'    => true,
         ]);
 
-        $this->seeInDatabase('property_bag', [
+        $this->assertDatabaseHas('property_bag', [
             'resource_id'   => $comment->id,
             'resource_type' => 'LaravelPropertyBag\tests\Classes\Comment',
             'key'           => 'numeric',
             'value'         => json_encode('[10]'),
         ]);
 
-        $this->seeInDatabase('property_bag', [
+        $this->assertDatabaseHas('property_bag', [
             'resource_id'   => $comment->id,
             'resource_type' => 'LaravelPropertyBag\tests\Classes\Comment',
             'key'           => 'bool',

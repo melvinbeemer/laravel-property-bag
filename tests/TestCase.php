@@ -4,13 +4,12 @@ namespace LaravelPropertyBag\tests;
 
 use Hash;
 use LaravelPropertyBag\ServiceProvider;
-use Illuminate\Contracts\Console\Kernel;
 use LaravelPropertyBag\tests\Classes\Post;
 use LaravelPropertyBag\tests\Classes\User;
 use LaravelPropertyBag\tests\Classes\Admin;
 use LaravelPropertyBag\tests\Classes\Group;
 use LaravelPropertyBag\tests\Classes\Comment;
-use Laravel\BrowserKitTesting\TestCase as BaseTestCase;
+use Orchestra\Testbench\TestCase as BaseTestCase;
 use LaravelPropertyBag\tests\Migrations\CreatePostsTable;
 use LaravelPropertyBag\tests\Migrations\CreateUsersTable;
 use LaravelPropertyBag\tests\Migrations\CreateGroupsTable;
@@ -26,38 +25,45 @@ abstract class TestCase extends BaseTestCase
     protected $registered;
 
     /**
-     * Creates the application.
-     *
-     * @return \Illuminate\Foundation\Application
-     */
-    public function createApplication()
-    {
-        $app = require __DIR__.'/../vendor/laravel/laravel/bootstrap/app.php';
-
-        $app->register(ServiceProvider::class);
-
-        $app->make(Kernel::class)->bootstrap();
-
-        return $app;
-    }
-
-    /**
      * Setup DB and test variables before each test.
      */
-    protected function setUp()
+    protected function setUp(): void
     {
         parent::setUp();
-
-        $this->app['config']->set('database.default', 'sqlite');
-
-        $this->app['config']->set(
-            'database.connections.sqlite.database',
-            ':memory:'
-        );
 
         $this->migrate();
 
         $this->user = $this->makeUser();
+    }
+
+    /**
+     * Get package providers.
+     *
+     * @param  \Illuminate\Foundation\Application  $app
+     *
+     * @return array<int, class-string>
+     */
+    protected function getPackageProviders($app)
+    {
+        return [
+            ServiceProvider::class,
+        ];
+    }
+
+    /**
+     * Define environment setup.
+     *
+     * @param  \Illuminate\Foundation\Application  $app
+     * @return void
+     */
+    protected function defineEnvironment($app)
+    {
+        $app['config']->set('database.default', 'sqlite');
+        $app['config']->set('database.connections.sqlite', [
+            'driver' => 'sqlite',
+            'database' => ':memory:',
+            'prefix' => '',
+        ]);
     }
 
     /**

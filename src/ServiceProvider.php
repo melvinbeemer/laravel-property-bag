@@ -26,6 +26,14 @@ class ServiceProvider extends BaseProvider
         $this->publishes([
             __DIR__.'/Migrations/' => database_path('migrations'),
         ], 'migrations');
+
+        $this->publishes([
+            __DIR__.'/../config/propertybag.php' => config_path('propertybag.php'),
+        ], 'config');
+
+        $this->mergeConfigFrom(
+            __DIR__.'/../config/propertybag.php', 'propertybag'
+        );
     }
 
     /**

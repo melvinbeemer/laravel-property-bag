@@ -3,6 +3,7 @@
 namespace LaravelPropertyBag\Settings;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 use LaravelPropertyBag\Settings\Rules\RuleValidator;
 use LaravelPropertyBag\Exceptions\InvalidSettingsValue;
 
@@ -45,6 +46,13 @@ class Settings
     protected $ruleValidator;
 
     /**
+     * Cache store instance.
+     *
+     * @var \Illuminate\Contracts\Cache\Repository
+     */
+    protected $cache;
+
+    /**
      * Construct.
      *
      * @param ResourceConfig $settingsConfig
@@ -57,6 +65,7 @@ class Settings
 
         $this->ruleValidator = new RuleValidator();
         $this->registered = $settingsConfig->registeredSettings();
+        $this->cache = $this->getCacheStore();
 
         $this->sync();
     }
@@ -161,6 +170,24 @@ class Settings
      */
     public function all()
     {
+        if (!$this->isCacheEnabled()) {
+            return $this->getAllFromDatabase();
+        }
+
+        $cacheKey = $this->getAllCacheKey();
+        
+        return $this->cacheRemember($cacheKey, function () {
+            return $this->getAllFromDatabase();
+        });
+    }
+
+    /**
+     * Get all settings from database.
+     *
+     * @return \Illuminate\Support\Collection
+     */
+    protected function getAllFromDatabase()
+    {
         $saved = $this->allSaved();
 
         return $this->allDefaults()->map(function ($value, $key) use ($saved) {
@@ -241,6 +268,8 @@ class Settings
             $this->resource->load('propertyBag');
         }
 
+        $this->flushCache();
+        
         return $this->sync();
     }
 
@@ -333,12 +362,16 @@ class Settings
      */
     protected function createRecord($key, $value)
     {
-        return $this->propertyBag()->save(
+        $result = $this->propertyBag()->save(
             new PropertyBag([
                 'key'   => $key,
                 'value' => $this->valueToJson($value),
             ])
         );
+        
+        $this->flushCache();
+        
+        return $result;
     }
 
     /**
@@ -356,6 +389,8 @@ class Settings
         $record->value = $this->valueToJson($value);
 
         $record->save();
+        
+        $this->flushCache();
 
         return $record;
     }
@@ -382,6 +417,8 @@ class Settings
     protected function deleteRecord($key)
     {
         $this->getByKey($key)->delete();
+        
+        $this->flushCache();
     }
 
     /**
@@ -404,7 +441,16 @@ class Settings
      */
     protected function sync()
     {
-        $this->settings = $this->getAllSettingsFlat();
+        if (!$this->isCacheEnabled()) {
+            $this->settings = $this->getAllSettingsFlat();
+            return;
+        }
+
+        $cacheKey = $this->getAllSavedCacheKey();
+        
+        $this->settings = $this->cacheRemember($cacheKey, function () {
+            return $this->getAllSettingsFlat();
+        });
     }
 
     /**
@@ -444,8 +490,274 @@ class Settings
      */
     public function get($key)
     {
+        if (!$this->isCacheEnabled()) {
+            return $this->getFromDatabase($key);
+        }
+
+        $cacheKey = $this->getCacheKey($key);
+        
+        return $this->cacheRemember($cacheKey, function () use ($key) {
+            return $this->getFromDatabase($key);
+        });
+    }
+
+    /**
+     * Get value from database.
+     *
+     * @param string $key
+     *
+     * @return mixed
+     */
+    protected function getFromDatabase($key)
+    {
         return $this->allSaved()->get($key, function () use ($key) {
             return $this->getDefault($key);
         });
+    }
+
+    /**
+     * Get cache store instance.
+     *
+     * @return \Illuminate\Contracts\Cache\Repository
+     */
+    protected function getCacheStore()
+    {
+        $store = config('propertybag.cache.store');
+        
+        return $store ? Cache::store($store) : Cache::store();
+    }
+
+    /**
+     * Check if cache is enabled.
+     *
+     * @return bool
+     */
+    protected function isCacheEnabled()
+    {
+        return config('propertybag.cache.enabled', true);
+    }
+
+
+    /**
+     * Get cache key for a specific setting.
+     *
+     * @param string $key
+     *
+     * @return string
+     */
+    protected function getCacheKey($key)
+    {
+        $resourceType = get_class($this->resource);
+        $resourceId = $this->resource->getKey();
+        
+        return "property_bag:{$resourceType}:{$resourceId}:{$key}";
+    }
+
+    /**
+     * Get cache key for all settings.
+     *
+     * @return string
+     */
+    protected function getAllCacheKey()
+    {
+        $resourceType = get_class($this->resource);
+        $resourceId = $this->resource->getKey();
+        
+        return "property_bag:{$resourceType}:{$resourceId}:all";
+    }
+
+    /**
+     * Get cache key for all saved settings.
+     *
+     * @return string
+     */
+    protected function getAllSavedCacheKey()
+    {
+        $resourceType = get_class($this->resource);
+        $resourceId = $this->resource->getKey();
+        
+        return "property_bag:{$resourceType}:{$resourceId}:saved";
+    }
+
+
+    /**
+     * Remember value in cache.
+     *
+     * @param string   $key
+     * @param \Closure $callback
+     *
+     * @return mixed
+     */
+    protected function cacheRemember($key, \Closure $callback)
+    {
+        $duration = config('propertybag.cache.duration', 86400);
+        
+        // Track this cache key for later invalidation
+        $this->trackCacheKey($key);
+        
+        return $this->cache->remember($key, $duration, $callback);
+    }
+
+    /**
+     * Track a cache key for this resource.
+     *
+     * @param string $key
+     *
+     * @return void
+     */
+    protected function trackCacheKey($key)
+    {
+        $resourceType = get_class($this->resource);
+        
+        // Track by resource type
+        $typeKeysKey = "property_bag:keys:{$resourceType}";
+        $typeKeys = $this->cache->get($typeKeysKey, []);
+        if (!in_array($key, $typeKeys)) {
+            $typeKeys[] = $key;
+            $this->cache->put($typeKeysKey, $typeKeys, config('propertybag.cache.duration', 86400));
+        }
+        
+        // Track resource types
+        $resourceTypesKey = 'property_bag:resource_types';
+        $resourceTypes = $this->cache->get($resourceTypesKey, []);
+        if (!in_array($resourceType, $resourceTypes)) {
+            $resourceTypes[] = $resourceType;
+            $this->cache->put($resourceTypesKey, $resourceTypes, config('propertybag.cache.duration', 86400));
+        }
+        
+        // Track by specific resource
+        $resourceId = $this->resource->getKey();
+        $resourceKeysKey = "property_bag:keys:{$resourceType}:{$resourceId}";
+        $resourceKeys = $this->cache->get($resourceKeysKey, []);
+        if (!in_array($key, $resourceKeys)) {
+            $resourceKeys[] = $key;
+            $this->cache->put($resourceKeysKey, $resourceKeys, config('propertybag.cache.duration', 86400));
+        }
+    }
+
+    /**
+     * Flush cache for this resource.
+     *
+     * @return void
+     */
+    protected function flushCache()
+    {
+        if (!$this->isCacheEnabled()) {
+            return;
+        }
+
+        $this->forgetCacheKeys();
+    }
+
+    /**
+     * Forget individual cache keys.
+     *
+     * @return void
+     */
+    protected function forgetCacheKeys()
+    {
+        $resourceType = get_class($this->resource);
+        $resourceId = $this->resource->getKey();
+        $resourceKeysKey = "property_bag:keys:{$resourceType}:{$resourceId}";
+        
+        // Get all tracked keys for this resource
+        $trackedKeys = $this->cache->get($resourceKeysKey, []);
+        
+        // Forget all tracked keys
+        foreach ($trackedKeys as $key) {
+            $this->cache->forget($key);
+        }
+        
+        // Also forget the saved settings cache
+        $this->cache->forget($this->getAllSavedCacheKey());
+        
+        // Clean up the tracking
+        $this->cache->forget($resourceKeysKey);
+        
+        // Also update the resource type keys
+        $typeKeysKey = "property_bag:keys:{$resourceType}";
+        $typeKeys = $this->cache->get($typeKeysKey, []);
+        $remainingKeys = array_filter($typeKeys, function($key) use ($trackedKeys) {
+            return !in_array($key, $trackedKeys);
+        });
+        
+        if (!empty($remainingKeys)) {
+            $this->cache->put($typeKeysKey, array_values($remainingKeys), config('propertybag.cache.duration', 86400));
+        } else {
+            $this->cache->forget($typeKeysKey);
+        }
+    }
+
+    /**
+     * Flush cache for all resources of a specific type.
+     *
+     * @param string $resourceType Fully qualified class name
+     * @param array|null $resourceIds Optional array of specific resource IDs to flush
+     *
+     * @return void
+     */
+    public static function flushCacheForResourceType($resourceType, $resourceIds = null)
+    {
+        if (!config('propertybag.cache.enabled', true)) {
+            return;
+        }
+
+        $store = config('propertybag.cache.store');
+        $cache = $store ? Cache::store($store) : Cache::store();
+        
+        // Get all cache keys for this resource type
+        $cacheKeysKey = "property_bag:keys:{$resourceType}";
+        $allKeys = $cache->get($cacheKeysKey, []);
+        
+        if ($resourceIds) {
+            // Filter keys for specific resource IDs
+            $pattern = "/property_bag:" . preg_quote($resourceType, '/') . ":([0-9]+):/";
+            $keysToForget = array_filter($allKeys, function($key) use ($pattern, $resourceIds) {
+                if (preg_match($pattern, $key, $matches)) {
+                    return in_array($matches[1], $resourceIds);
+                }
+                return false;
+            });
+        } else {
+            $keysToForget = $allKeys;
+        }
+        
+        // Forget all matching keys
+        foreach ($keysToForget as $key) {
+            $cache->forget($key);
+        }
+        
+        // Clean up the keys list
+        if (!$resourceIds) {
+            $cache->forget($cacheKeysKey);
+        } else {
+            $remainingKeys = array_diff($allKeys, $keysToForget);
+            $cache->put($cacheKeysKey, array_values($remainingKeys), config('propertybag.cache.duration', 86400));
+        }
+    }
+
+    /**
+     * Flush all property bag cache.
+     *
+     * @return void
+     */
+    public static function flushAllCache()
+    {
+        if (!config('propertybag.cache.enabled', true)) {
+            return;
+        }
+
+        $store = config('propertybag.cache.store');
+        $cache = $store ? Cache::store($store) : Cache::store();
+        
+        // Get all resource types that have cached keys
+        $resourceTypes = $cache->get('property_bag:resource_types', []);
+        
+        foreach ($resourceTypes as $resourceType) {
+            static::flushCacheForResourceType($resourceType);
+        }
+        
+        // Clean up the resource types list
+        $cache->forget('property_bag:resource_types');
     }
 }
