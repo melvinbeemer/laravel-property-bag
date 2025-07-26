@@ -176,9 +176,18 @@ class Settings
 
         $cacheKey = $this->getAllCacheKey();
         
-        return $this->cacheRemember($cacheKey, function () {
-            return $this->getAllFromDatabase();
-        });
+        // Use a wrapper to handle null values properly (single cache hit)
+        $cached = $this->cache->get($cacheKey, 'CACHE_MISS');
+        if ($cached !== 'CACHE_MISS') {
+            return $cached;
+        }
+        
+        // Only track when we're actually storing a new value
+        $value = $this->getAllFromDatabase();
+        $this->trackCacheKey($cacheKey);
+        $this->cache->forever($cacheKey, $value);
+        
+        return $value;
     }
 
     /**
@@ -448,9 +457,17 @@ class Settings
 
         $cacheKey = $this->getAllSavedCacheKey();
         
-        $this->settings = $this->cacheRemember($cacheKey, function () {
-            return $this->getAllSettingsFlat();
-        });
+        // Use a wrapper to handle null values properly (single cache hit)
+        $cached = $this->cache->get($cacheKey, 'CACHE_MISS');
+        if ($cached !== 'CACHE_MISS') {
+            $this->settings = $cached;
+            return;
+        }
+        
+        // Only track when we're actually storing a new value
+        $this->settings = $this->getAllSettingsFlat();
+        $this->trackCacheKey($cacheKey);
+        $this->cache->forever($cacheKey, $this->settings);
     }
 
     /**
@@ -496,9 +513,18 @@ class Settings
 
         $cacheKey = $this->getCacheKey($key);
         
-        return $this->cacheRemember($cacheKey, function () use ($key) {
-            return $this->getFromDatabase($key);
-        });
+        // Use a wrapper to handle null values properly (single cache hit)
+        $cached = $this->cache->get($cacheKey, 'CACHE_MISS');
+        if ($cached !== 'CACHE_MISS') {
+            return $cached;
+        }
+        
+        // Only track when we're actually storing a new value
+        $value = $this->getFromDatabase($key);
+        $this->trackCacheKey($cacheKey);
+        $this->cache->forever($cacheKey, $value);
+        
+        return $value;
     }
 
     /**
@@ -580,23 +606,6 @@ class Settings
     }
 
 
-    /**
-     * Remember value in cache.
-     *
-     * @param string   $key
-     * @param \Closure $callback
-     *
-     * @return mixed
-     */
-    protected function cacheRemember($key, \Closure $callback)
-    {
-        $duration = config('propertybag.cache.duration', 86400);
-        
-        // Track this cache key for later invalidation
-        $this->trackCacheKey($key);
-        
-        return $this->cache->remember($key, $duration, $callback);
-    }
 
     /**
      * Track a cache key for this resource.
@@ -614,7 +623,7 @@ class Settings
         $typeKeys = $this->cache->get($typeKeysKey, []);
         if (!in_array($key, $typeKeys)) {
             $typeKeys[] = $key;
-            $this->cache->put($typeKeysKey, $typeKeys, config('propertybag.cache.duration', 86400));
+            $this->cache->forever($typeKeysKey, $typeKeys);
         }
         
         // Track resource types
@@ -622,7 +631,7 @@ class Settings
         $resourceTypes = $this->cache->get($resourceTypesKey, []);
         if (!in_array($resourceType, $resourceTypes)) {
             $resourceTypes[] = $resourceType;
-            $this->cache->put($resourceTypesKey, $resourceTypes, config('propertybag.cache.duration', 86400));
+            $this->cache->forever($resourceTypesKey, $resourceTypes);
         }
         
         // Track by specific resource
@@ -631,7 +640,7 @@ class Settings
         $resourceKeys = $this->cache->get($resourceKeysKey, []);
         if (!in_array($key, $resourceKeys)) {
             $resourceKeys[] = $key;
-            $this->cache->put($resourceKeysKey, $resourceKeys, config('propertybag.cache.duration', 86400));
+            $this->cache->forever($resourceKeysKey, $resourceKeys);
         }
     }
 
