@@ -31,23 +31,23 @@ class CacheTest extends TestCase
         Cache::shouldReceive('store')->andReturnSelf();
         
         // Mock for sync in constructor
-        Cache::shouldReceive('remember')
-            ->with("property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user->id}:saved", 3600, m::type('Closure'))
+        Cache::shouldReceive('get')
+            ->with("property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user->id}:saved", 'CACHE_MISS')
             ->once()
-            ->andReturn(collect());
-        
-        // Mock tracking calls
+            ->andReturn('CACHE_MISS');
+            
         Cache::shouldReceive('get')->withAnyArgs()->andReturn([]);
         Cache::shouldReceive('put')->withAnyArgs()->andReturnSelf();
         
-        // Mock the actual setting cache
-        Cache::shouldReceive('remember')
-            ->with("property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user->id}:test_settings1", 3600, m::type('Closure'))
+        // Mock the setting retrieval - first time cache miss, then database returns default
+        Cache::shouldReceive('get')
+            ->with("property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user->id}:test_settings1", 'CACHE_MISS')
             ->once()
-            ->andReturn('monkey');
+            ->andReturn('CACHE_MISS');
 
         $result = $user->settings('test_settings1');
 
+        // Should return default value 'monkey'
         $this->assertEquals('monkey', $result);
     }
 
@@ -94,23 +94,24 @@ class CacheTest extends TestCase
         Cache::shouldReceive('store')->andReturnSelf();
         
         // Mock for sync in constructor
-        Cache::shouldReceive('remember')
-            ->with("property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user->id}:saved", 3600, m::type('Closure'))
+        Cache::shouldReceive('get')
+            ->with("property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user->id}:saved", 'CACHE_MISS')
             ->once()
-            ->andReturn(collect());
+            ->andReturn('CACHE_MISS');
             
         // Mock tracking
         Cache::shouldReceive('get')->withAnyArgs()->andReturn([]);
         Cache::shouldReceive('put')->withAnyArgs()->andReturnSelf();
         
-        // Mock the all() cache
-        Cache::shouldReceive('remember')
-            ->with("property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user->id}:all", 3600, m::type('Closure'))
+        // Mock the all() cache - first time cache miss
+        Cache::shouldReceive('get')
+            ->with("property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user->id}:all", 'CACHE_MISS')
             ->once()
-            ->andReturn($expectedSettings);
+            ->andReturn('CACHE_MISS');
 
         $result = $user->allSettings();
 
+        // Should return all defaults
         $this->assertEquals($expectedSettings, $result);
     }
 
@@ -127,13 +128,18 @@ class CacheTest extends TestCase
         Cache::clearResolvedInstances();
         Cache::shouldReceive('store')->andReturnSelf();
         
-        // Mock all the cache operations
-        Cache::shouldReceive('remember')->withAnyArgs()->andReturn(collect());
+        // Mock for constructor
+        Cache::shouldReceive('get')
+            ->with("property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user->id}:saved", 'CACHE_MISS')
+            ->once()
+            ->andReturn('CACHE_MISS');
+        Cache::shouldReceive('put')->withAnyArgs()->andReturnSelf();
+        
+        // Mock cache tracking and clearing
         Cache::shouldReceive('get')->withAnyArgs()->andReturn([
             "property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user->id}:all",
             "property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user->id}:test_settings1",
         ]);
-        Cache::shouldReceive('put')->withAnyArgs()->andReturnSelf();
         Cache::shouldReceive('forget')->withAnyArgs()->andReturnSelf();
 
         // The test is checking that cache is cleared when settings are updated

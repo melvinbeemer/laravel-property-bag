@@ -185,7 +185,7 @@ class Settings
         // Only track when we're actually storing a new value
         $value = $this->getAllFromDatabase();
         $this->trackCacheKey($cacheKey);
-        $this->cache->forever($cacheKey, $value);
+        $this->cache->put($cacheKey, $value, $this->getCacheDuration());
         
         return $value;
     }
@@ -467,7 +467,7 @@ class Settings
         // Only track when we're actually storing a new value
         $this->settings = $this->getAllSettingsFlat();
         $this->trackCacheKey($cacheKey);
-        $this->cache->forever($cacheKey, $this->settings);
+        $this->cache->put($cacheKey, $this->settings, $this->getCacheDuration());
     }
 
     /**
@@ -522,7 +522,7 @@ class Settings
         // Only track when we're actually storing a new value
         $value = $this->getFromDatabase($key);
         $this->trackCacheKey($cacheKey);
-        $this->cache->forever($cacheKey, $value);
+        $this->cache->put($cacheKey, $value, $this->getCacheDuration());
         
         return $value;
     }
@@ -623,7 +623,7 @@ class Settings
         $typeKeys = $this->cache->get($typeKeysKey, []);
         if (!in_array($key, $typeKeys)) {
             $typeKeys[] = $key;
-            $this->cache->forever($typeKeysKey, $typeKeys);
+            $this->cache->put($typeKeysKey, $typeKeys, $this->getCacheDuration());
         }
         
         // Track resource types
@@ -631,7 +631,7 @@ class Settings
         $resourceTypes = $this->cache->get($resourceTypesKey, []);
         if (!in_array($resourceType, $resourceTypes)) {
             $resourceTypes[] = $resourceType;
-            $this->cache->forever($resourceTypesKey, $resourceTypes);
+            $this->cache->put($resourceTypesKey, $resourceTypes, $this->getCacheDuration());
         }
         
         // Track by specific resource
@@ -640,7 +640,7 @@ class Settings
         $resourceKeys = $this->cache->get($resourceKeysKey, []);
         if (!in_array($key, $resourceKeys)) {
             $resourceKeys[] = $key;
-            $this->cache->forever($resourceKeysKey, $resourceKeys);
+            $this->cache->put($resourceKeysKey, $resourceKeys, $this->getCacheDuration());
         }
     }
 
@@ -743,6 +743,16 @@ class Settings
             $remainingKeys = array_diff($allKeys, $keysToForget);
             $cache->put($cacheKeysKey, array_values($remainingKeys), config('propertybag.cache.duration', 86400));
         }
+    }
+
+    /**
+     * Get cache duration in seconds.
+     *
+     * @return int
+     */
+    protected function getCacheDuration()
+    {
+        return config('propertybag.cache.duration', 86400);
     }
 
     /**
