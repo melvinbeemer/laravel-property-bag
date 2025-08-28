@@ -680,6 +680,9 @@ class Settings
         // Also forget the saved settings cache
         $this->cache->forget($this->getAllSavedCacheKey());
         
+        // Also forget the all settings cache to ensure consistency
+        $this->cache->forget($this->getAllCacheKey());
+        
         // Clean up the tracking
         $this->cache->forget($resourceKeysKey);
         
