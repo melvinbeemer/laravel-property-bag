@@ -2,57 +2,38 @@
 
 namespace LaravelPropertyBag\tests\Unit;
 
-use PHPUnit\Framework\Attributes\Test;
-
-use Mockery as m;
 use Illuminate\Support\Facades\Cache;
-use LaravelPropertyBag\tests\TestCase;
 use LaravelPropertyBag\Settings\Settings;
+use LaravelPropertyBag\tests\TestCase;
+use PHPUnit\Framework\Attributes\Test;
 
 class CacheTest extends TestCase
 {
     protected function setUp(): void
     {
         parent::setUp();
-    }
 
-    /**
-     */
-    #[Test]
-    public function settings_are_cached_when_cache_is_enabled()
-    {
+        config(['cache.default' => 'array']);
         config(['propertybag.cache.enabled' => true]);
         config(['propertybag.cache.duration' => 3600]);
 
-        $user = $this->user;
-        
-        // Reset mocks for specific test
-        Cache::clearResolvedInstances();
-        Cache::shouldReceive('store')->andReturnSelf();
-        
-        // Mock for sync in constructor
-        Cache::shouldReceive('get')
-            ->with("property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user->id}:saved", 'CACHE_MISS')
-            ->once()
-            ->andReturn('CACHE_MISS');
-            
-        Cache::shouldReceive('get')->withAnyArgs()->andReturn([]);
-        Cache::shouldReceive('put')->withAnyArgs()->andReturnSelf();
-        
-        // Mock the setting retrieval - first time cache miss, then database returns default
-        Cache::shouldReceive('get')
-            ->with("property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user->id}:test_settings1", 'CACHE_MISS')
-            ->once()
-            ->andReturn('CACHE_MISS');
-
-        $result = $user->settings('test_settings1');
-
-        // Should return default value 'monkey'
-        $this->assertEquals('monkey', $result);
+        Cache::flush();
     }
 
-    /**
-     */
+    #[Test]
+    public function settings_are_cached_when_cache_is_enabled()
+    {
+        $user = $this->user;
+        $user->setSettings(['test_settings1' => 'bananas']);
+
+        $savedKey = $this->savedCacheKey($user);
+        $perKeyCacheKey = $this->perKeyCacheKey($user, 'test_settings1');
+
+        $this->assertTrue(Cache::has($savedKey));
+        $this->assertEquals('bananas', $user->settings('test_settings1'));
+        $this->assertFalse(Cache::has($perKeyCacheKey));
+    }
+
     #[Test]
     public function settings_are_not_cached_when_cache_is_disabled()
     {
@@ -61,206 +42,124 @@ class CacheTest extends TestCase
         $user = $this->user;
         $user->setSettings(['test_settings1' => 'bananas']);
 
-        // Clear any previous cache mocks
-        Cache::clearResolvedInstances();
-        
-        // Cache should not be called
-        Cache::shouldReceive('store')->never();
-        Cache::shouldReceive('remember')->never();
-
-        $result = $user->settings('test_settings1');
-
-        $this->assertEquals('bananas', $result);
+        $this->assertEquals('bananas', $user->settings('test_settings1'));
+        $this->assertFalse(Cache::has($this->savedCacheKey($user)));
+        $this->assertFalse(Cache::has($this->allCacheKey($user)));
     }
 
-    /**
-     */
     #[Test]
     public function all_settings_are_cached()
     {
-        config(['propertybag.cache.enabled' => true]);
-        config(['propertybag.cache.duration' => 3600]);
-
         $user = $this->user;
 
-        $expectedSettings = collect([
-            'test_settings1' => 'monkey',
-            'test_settings2' => true,
-            'test_settings3' => false,
-        ]);
+        $all1 = $user->allSettings();
+        $all2 = $user->allSettings();
 
-        // Reset mocks for specific test
-        Cache::clearResolvedInstances();
-        Cache::shouldReceive('store')->andReturnSelf();
-        
-        // Mock for sync in constructor
-        Cache::shouldReceive('get')
-            ->with("property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user->id}:saved", 'CACHE_MISS')
-            ->once()
-            ->andReturn('CACHE_MISS');
-            
-        // Mock tracking
-        Cache::shouldReceive('get')->withAnyArgs()->andReturn([]);
-        Cache::shouldReceive('put')->withAnyArgs()->andReturnSelf();
-        
-        // Mock the all() cache - first time cache miss
-        Cache::shouldReceive('get')
-            ->with("property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user->id}:all", 'CACHE_MISS')
-            ->once()
-            ->andReturn('CACHE_MISS');
-
-        $result = $user->allSettings();
-
-        // Should return all defaults
-        $this->assertEquals($expectedSettings, $result);
+        $this->assertEquals($all1, $all2);
+        $this->assertTrue(Cache::has($this->allCacheKey($user)));
     }
 
-    /**
-     */
     #[Test]
     public function cache_is_flushed_when_settings_are_updated()
     {
-        config(['propertybag.cache.enabled' => true]);
-
         $user = $this->user;
-        
-        // Reset mocks for specific test
-        Cache::clearResolvedInstances();
-        Cache::shouldReceive('store')->andReturnSelf();
-        
-        // Mock for constructor
-        Cache::shouldReceive('get')
-            ->with("property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user->id}:saved", 'CACHE_MISS')
-            ->once()
-            ->andReturn('CACHE_MISS');
-        Cache::shouldReceive('put')->withAnyArgs()->andReturnSelf();
-        
-        // Mock cache tracking and clearing
-        Cache::shouldReceive('get')->withAnyArgs()->andReturn([
-            "property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user->id}:all",
-            "property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user->id}:test_settings1",
-        ]);
-        Cache::shouldReceive('forget')->withAnyArgs()->andReturnSelf();
 
-        // The test is checking that cache is cleared when settings are updated
         $user->setSettings(['test_settings1' => 'bananas']);
-        
-        // If we got here without errors, cache was properly handled
-        $this->assertTrue(true);
+        $user->allSettings();
+
+        $savedKey = $this->savedCacheKey($user);
+        $allKey = $this->allCacheKey($user);
+
+        $this->assertTrue(Cache::has($savedKey));
+        $this->assertTrue(Cache::has($allKey));
+
+        $user->setSettings(['test_settings1' => 'grapes']);
+
+        $this->assertTrue(Cache::has($savedKey));
+        $this->assertFalse(Cache::has($allKey));
+        $this->assertEquals('grapes', $user->settings('test_settings1'));
+        $this->assertEquals('grapes', $user->allSettings()['test_settings1']);
     }
 
-    /**
-     */
     #[Test]
-    public function cache_can_be_flushed_for_resource_type()
+    public function stale_per_key_cache_is_ignored()
     {
-        config(['propertybag.cache.enabled' => true]);
+        $user = $this->user;
+        $user->setSettings(['test_settings1' => 'bananas']);
 
-        $cacheKeysKey = "property_bag:keys:App\\Models\\User";
-        $allKeys = [
-            "property_bag:App\\Models\\User:1:theme",
-            "property_bag:App\\Models\\User:1:all",
-            "property_bag:App\\Models\\User:2:theme",
-        ];
+        Cache::put($this->perKeyCacheKey($user, 'test_settings1'), 'stale', 3600);
 
-        Cache::clearResolvedInstances();
-        Cache::shouldReceive('store')->andReturnSelf();
-        Cache::shouldReceive('get')
-            ->with($cacheKeysKey, [])
-            ->once()
-            ->andReturn($allKeys);
-
-        foreach ($allKeys as $key) {
-            Cache::shouldReceive('forget')->with($key)->once();
-        }
-
-        Cache::shouldReceive('forget')->with($cacheKeysKey)->once();
-
-        Settings::flushCacheForResourceType('App\\Models\\User');
-        
-        $this->assertTrue(true);
+        $this->assertEquals('bananas', $user->settings('test_settings1'));
     }
 
-    /**
-     */
     #[Test]
     public function cache_can_be_flushed_for_specific_resource_ids()
     {
-        config(['propertybag.cache.enabled' => true]);
-        config(['propertybag.cache.duration' => 3600]);
+        $user1 = $this->user;
+        $user2 = $this->makeUser('Another User', 'another@example.com');
 
-        $cacheKeysKey = "property_bag:keys:App\\Models\\User";
-        $allKeys = [
-            "property_bag:App\\Models\\User:1:theme",
-            "property_bag:App\\Models\\User:1:all",
-            "property_bag:App\\Models\\User:2:theme",
-            "property_bag:App\\Models\\User:3:all",
-        ];
+        $user1->setSettings(['test_settings1' => 'bananas']);
+        $user2->setSettings(['test_settings1' => 'grapes']);
 
-        Cache::clearResolvedInstances();
-        Cache::shouldReceive('store')->andReturnSelf();
-        Cache::shouldReceive('get')
-            ->with($cacheKeysKey, [])
-            ->once()
-            ->andReturn($allKeys);
+        $user1->allSettings();
+        $user2->allSettings();
 
-        // Only keys for user 1 and 3 should be forgotten
-        Cache::shouldReceive('forget')->with("property_bag:App\\Models\\User:1:theme")->once();
-        Cache::shouldReceive('forget')->with("property_bag:App\\Models\\User:1:all")->once();
-        Cache::shouldReceive('forget')->with("property_bag:App\\Models\\User:3:all")->once();
+        Settings::flushCacheForResourceType(get_class($user1), [$user1->id]);
 
-        // Remaining keys should be put back
-        Cache::shouldReceive('put')
-            ->with($cacheKeysKey, ["property_bag:App\\Models\\User:2:theme"], 3600)
-            ->once();
-
-        Settings::flushCacheForResourceType('App\\Models\\User', [1, 3]);
-        
-        $this->assertTrue(true);
+        $this->assertFalse(Cache::has($this->savedCacheKey($user1)));
+        $this->assertFalse(Cache::has($this->allCacheKey($user1)));
+        $this->assertTrue(Cache::has($this->savedCacheKey($user2)));
+        $this->assertTrue(Cache::has($this->allCacheKey($user2)));
     }
 
-    /**
-     */
     #[Test]
     public function all_cache_can_be_flushed()
     {
-        config(['propertybag.cache.enabled' => true]);
+        $user = $this->user;
+        $post = $this->makePost();
 
-        $resourceTypes = [
-            'App\\Models\\User',
-            'App\\Models\\Post',
-        ];
+        $user->setSettings(['test_settings1' => 'bananas']);
+        $post->setSettings(['test_settings1' => 'grapes']);
 
-        Cache::clearResolvedInstances();
-        Cache::shouldReceive('store')->andReturnSelf();
-        Cache::shouldReceive('get')
-            ->with('property_bag:resource_types', [])
-            ->once()
-            ->andReturn($resourceTypes);
+        $user->allSettings();
+        $post->allSettings();
 
-        // Each resource type should be flushed
-        foreach ($resourceTypes as $type) {
-            Cache::shouldReceive('get')
-                ->with("property_bag:keys:{$type}", [])
-                ->once()
-                ->andReturn([]);
-            Cache::shouldReceive('forget')
-                ->with("property_bag:keys:{$type}")
-                ->once();
-        }
-
-        Cache::shouldReceive('forget')
-            ->with('property_bag:resource_types')
-            ->once();
+        $this->assertTrue(Cache::has($this->savedCacheKey($user)));
+        $this->assertTrue(Cache::has($this->savedCacheKey($post)));
 
         Settings::flushAllCache();
-        
-        $this->assertTrue(true);
+
+        $this->assertFalse(Cache::has($this->savedCacheKey($user)));
+        $this->assertFalse(Cache::has($this->allCacheKey($user)));
+        $this->assertFalse(Cache::has($this->savedCacheKey($post)));
+        $this->assertFalse(Cache::has($this->allCacheKey($post)));
     }
 
-    public function tearDown(): void
+    private function savedCacheKey($resource): string
     {
-        parent::tearDown();
-        m::close();
+        return sprintf(
+            'property_bag:%s:%s:saved',
+            get_class($resource),
+            $resource->getKey()
+        );
+    }
+
+    private function allCacheKey($resource): string
+    {
+        return sprintf(
+            'property_bag:%s:%s:all',
+            get_class($resource),
+            $resource->getKey()
+        );
+    }
+
+    private function perKeyCacheKey($resource, string $settingKey): string
+    {
+        return sprintf(
+            'property_bag:%s:%s:%s',
+            get_class($resource),
+            $resource->getKey(),
+            $settingKey
+        );
     }
 }

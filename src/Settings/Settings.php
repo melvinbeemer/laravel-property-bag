@@ -181,12 +181,10 @@ class Settings
         if ($cached !== 'CACHE_MISS') {
             return $cached;
         }
-        
-        // Only track when we're actually storing a new value
+
         $value = $this->getAllFromDatabase();
-        $this->trackCacheKey($cacheKey);
         $this->cache->put($cacheKey, $value, $this->getCacheDuration());
-        
+
         return $value;
     }
 
@@ -371,16 +369,12 @@ class Settings
      */
     protected function createRecord($key, $value)
     {
-        $result = $this->propertyBag()->save(
+        return $this->propertyBag()->save(
             new PropertyBag([
                 'key'   => $key,
                 'value' => $this->valueToJson($value),
             ])
         );
-        
-        $this->flushCache();
-        
-        return $result;
     }
 
     /**
@@ -398,8 +392,6 @@ class Settings
         $record->value = $this->valueToJson($value);
 
         $record->save();
-        
-        $this->flushCache();
 
         return $record;
     }
@@ -425,9 +417,7 @@ class Settings
      */
     protected function deleteRecord($key)
     {
-        $this->getByKey($key)->delete();
-        
-        $this->flushCache();
+        return $this->getByKey($key)->delete();
     }
 
     /**
@@ -463,10 +453,8 @@ class Settings
             $this->settings = $cached;
             return;
         }
-        
-        // Only track when we're actually storing a new value
+
         $this->settings = $this->getAllSettingsFlat();
-        $this->trackCacheKey($cacheKey);
         $this->cache->put($cacheKey, $this->settings, $this->getCacheDuration());
     }
 
@@ -507,24 +495,7 @@ class Settings
      */
     public function get($key)
     {
-        if (!$this->isCacheEnabled()) {
-            return $this->getFromDatabase($key);
-        }
-
-        $cacheKey = $this->getCacheKey($key);
-        
-        // Use a wrapper to handle null values properly (single cache hit)
-        $cached = $this->cache->get($cacheKey, 'CACHE_MISS');
-        if ($cached !== 'CACHE_MISS') {
-            return $cached;
-        }
-        
-        // Only track when we're actually storing a new value
-        $value = $this->getFromDatabase($key);
-        $this->trackCacheKey($cacheKey);
-        $this->cache->put($cacheKey, $value, $this->getCacheDuration());
-        
-        return $value;
+        return $this->getFromDatabase($key);
     }
 
     /**
@@ -563,22 +534,6 @@ class Settings
         return config('propertybag.cache.enabled', true);
     }
 
-
-    /**
-     * Get cache key for a specific setting.
-     *
-     * @param string $key
-     *
-     * @return string
-     */
-    protected function getCacheKey($key)
-    {
-        $resourceType = get_class($this->resource);
-        $resourceId = $this->resource->getKey();
-        
-        return "property_bag:{$resourceType}:{$resourceId}:{$key}";
-    }
-
     /**
      * Get cache key for all settings.
      *
@@ -605,45 +560,6 @@ class Settings
         return "property_bag:{$resourceType}:{$resourceId}:saved";
     }
 
-
-
-    /**
-     * Track a cache key for this resource.
-     *
-     * @param string $key
-     *
-     * @return void
-     */
-    protected function trackCacheKey($key)
-    {
-        $resourceType = get_class($this->resource);
-        
-        // Track by resource type
-        $typeKeysKey = "property_bag:keys:{$resourceType}";
-        $typeKeys = $this->cache->get($typeKeysKey, []);
-        if (!in_array($key, $typeKeys)) {
-            $typeKeys[] = $key;
-            $this->cache->put($typeKeysKey, $typeKeys, $this->getCacheDuration());
-        }
-        
-        // Track resource types
-        $resourceTypesKey = 'property_bag:resource_types';
-        $resourceTypes = $this->cache->get($resourceTypesKey, []);
-        if (!in_array($resourceType, $resourceTypes)) {
-            $resourceTypes[] = $resourceType;
-            $this->cache->put($resourceTypesKey, $resourceTypes, $this->getCacheDuration());
-        }
-        
-        // Track by specific resource
-        $resourceId = $this->resource->getKey();
-        $resourceKeysKey = "property_bag:keys:{$resourceType}:{$resourceId}";
-        $resourceKeys = $this->cache->get($resourceKeysKey, []);
-        if (!in_array($key, $resourceKeys)) {
-            $resourceKeys[] = $key;
-            $this->cache->put($resourceKeysKey, $resourceKeys, $this->getCacheDuration());
-        }
-    }
-
     /**
      * Flush cache for this resource.
      *
@@ -665,39 +581,20 @@ class Settings
      */
     protected function forgetCacheKeys()
     {
+        $this->cache->forget($this->getAllSavedCacheKey());
+        $this->cache->forget($this->getAllCacheKey());
+
+        // Backward-compatibility cleanup for older tracking keys.
         $resourceType = get_class($this->resource);
         $resourceId = $this->resource->getKey();
         $resourceKeysKey = "property_bag:keys:{$resourceType}:{$resourceId}";
-        
-        // Get all tracked keys for this resource
         $trackedKeys = $this->cache->get($resourceKeysKey, []);
-        
-        // Forget all tracked keys
+
         foreach ($trackedKeys as $key) {
             $this->cache->forget($key);
         }
-        
-        // Also forget the saved settings cache
-        $this->cache->forget($this->getAllSavedCacheKey());
-        
-        // Also forget the all settings cache to ensure consistency
-        $this->cache->forget($this->getAllCacheKey());
-        
-        // Clean up the tracking
+
         $this->cache->forget($resourceKeysKey);
-        
-        // Also update the resource type keys
-        $typeKeysKey = "property_bag:keys:{$resourceType}";
-        $typeKeys = $this->cache->get($typeKeysKey, []);
-        $remainingKeys = array_filter($typeKeys, function($key) use ($trackedKeys) {
-            return !in_array($key, $trackedKeys);
-        });
-        
-        if (!empty($remainingKeys)) {
-            $this->cache->put($typeKeysKey, array_values($remainingKeys), config('propertybag.cache.duration', 86400));
-        } else {
-            $this->cache->forget($typeKeysKey);
-        }
     }
 
     /**
@@ -717,35 +614,33 @@ class Settings
         $store = config('propertybag.cache.store');
         $cache = $store ? Cache::store($store) : Cache::store();
         
-        // Get all cache keys for this resource type
-        $cacheKeysKey = "property_bag:keys:{$resourceType}";
-        $allKeys = $cache->get($cacheKeysKey, []);
-        
-        if ($resourceIds) {
-            // Filter keys for specific resource IDs
-            $pattern = "/property_bag:" . preg_quote($resourceType, '/') . ":([0-9]+):/";
-            $keysToForget = array_filter($allKeys, function($key) use ($pattern, $resourceIds) {
-                if (preg_match($pattern, $key, $matches)) {
-                    return in_array($matches[1], $resourceIds);
-                }
-                return false;
-            });
-        } else {
-            $keysToForget = $allKeys;
+        $ids = $resourceIds;
+
+        if ($ids === null) {
+            $ids = PropertyBag::query()
+                ->where('resource_type', $resourceType)
+                ->distinct()
+                ->pluck('resource_id')
+                ->all();
         }
-        
-        // Forget all matching keys
-        foreach ($keysToForget as $key) {
-            $cache->forget($key);
+
+        foreach (array_unique($ids) as $resourceId) {
+            $cache->forget("property_bag:{$resourceType}:{$resourceId}:saved");
+            $cache->forget("property_bag:{$resourceType}:{$resourceId}:all");
+
+            // Backward-compatibility cleanup for older tracking keys.
+            $resourceKeysKey = "property_bag:keys:{$resourceType}:{$resourceId}";
+            $trackedKeys = $cache->get($resourceKeysKey, []);
+
+            foreach ($trackedKeys as $key) {
+                $cache->forget($key);
+            }
+
+            $cache->forget($resourceKeysKey);
         }
-        
-        // Clean up the keys list
-        if (!$resourceIds) {
-            $cache->forget($cacheKeysKey);
-        } else {
-            $remainingKeys = array_diff($allKeys, $keysToForget);
-            $cache->put($cacheKeysKey, array_values($remainingKeys), config('propertybag.cache.duration', 86400));
-        }
+
+        // Backward-compatibility cleanup for older tracking keys.
+        $cache->forget("property_bag:keys:{$resourceType}");
     }
 
     /**
@@ -772,14 +667,19 @@ class Settings
         $store = config('propertybag.cache.store');
         $cache = $store ? Cache::store($store) : Cache::store();
         
-        // Get all resource types that have cached keys
-        $resourceTypes = $cache->get('property_bag:resource_types', []);
-        
+        $resourceTypes = PropertyBag::query()
+            ->distinct()
+            ->pluck('resource_type')
+            ->all();
+
+        $legacyResourceTypes = $cache->get('property_bag:resource_types', []);
+        $resourceTypes = array_unique(array_merge($resourceTypes, $legacyResourceTypes));
+
         foreach ($resourceTypes as $resourceType) {
             static::flushCacheForResourceType($resourceType);
         }
-        
-        // Clean up the resource types list
+
+        // Backward-compatibility cleanup for older tracking keys.
         $cache->forget('property_bag:resource_types');
     }
 }

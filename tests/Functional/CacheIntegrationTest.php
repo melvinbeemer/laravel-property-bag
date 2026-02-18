@@ -53,9 +53,10 @@ class CacheIntegrationTest extends TestCase
         // First access - queries database
         $value1 = $user->settings('test_settings1');
         
-        // Check cache has the value
-        $cacheKey = "property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user->id}:test_settings1";
-        $this->assertTrue(Cache::has($cacheKey));
+        // Check saved snapshot cache has the value
+        $savedCacheKey = $this->savedCacheKey($user);
+        $this->assertTrue(Cache::has($savedCacheKey));
+        $this->assertFalse(Cache::has($this->perKeyCacheKey($user, 'test_settings1')));
         
         // Second access should use cache
         $value2 = $user->settings('test_settings1');
@@ -129,9 +130,9 @@ class CacheIntegrationTest extends TestCase
         // Access the value
         $value = $user->settings('test_settings1');
         
-        // Check cache does NOT have the value
-        $cacheKey = "property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user->id}:test_settings1";
-        $this->assertFalse(Cache::has($cacheKey));
+        // Check cache does NOT have values
+        $this->assertFalse(Cache::has($this->savedCacheKey($user)));
+        $this->assertFalse(Cache::has($this->allCacheKey($user)));
         
         $this->assertEquals('bananas', $value);
     }
@@ -148,20 +149,48 @@ class CacheIntegrationTest extends TestCase
         $user1->setSettings(['test_settings1' => 'bananas']);
         $user2->setSettings(['test_settings1' => 'grapes']);
         
-        // Cache the values
-        $user1->settings('test_settings1');
-        $user2->settings('test_settings1');
+        // Cache full settings to populate both cache keys
+        $user1->allSettings();
+        $user2->allSettings();
         
         // Flush cache for the resource type
         Settings::flushCacheForResourceType(get_class($user1));
         
         // Cache should be cleared
-        $cacheKey1 = "property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user1->id}:test_settings1";
-        $cacheKey2 = "property_bag:LaravelPropertyBag\\tests\\Classes\\User:{$user2->id}:test_settings1";
-        
-        // With the current implementation, we can't easily verify cache was cleared
-        // But we can verify the functionality still works
+        $this->assertFalse(Cache::has($this->savedCacheKey($user1)));
+        $this->assertFalse(Cache::has($this->allCacheKey($user1)));
+        $this->assertFalse(Cache::has($this->savedCacheKey($user2)));
+        $this->assertFalse(Cache::has($this->allCacheKey($user2)));
+
         $this->assertEquals('bananas', $user1->settings('test_settings1'));
         $this->assertEquals('grapes', $user2->settings('test_settings1'));
+    }
+
+    private function savedCacheKey($resource): string
+    {
+        return sprintf(
+            'property_bag:%s:%s:saved',
+            get_class($resource),
+            $resource->getKey()
+        );
+    }
+
+    private function allCacheKey($resource): string
+    {
+        return sprintf(
+            'property_bag:%s:%s:all',
+            get_class($resource),
+            $resource->getKey()
+        );
+    }
+
+    private function perKeyCacheKey($resource, string $settingKey): string
+    {
+        return sprintf(
+            'property_bag:%s:%s:%s',
+            get_class($resource),
+            $resource->getKey(),
+            $settingKey
+        );
     }
 }
